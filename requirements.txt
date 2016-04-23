@@ -1,2 +1,3 @@
 requests
-pygodaddy
+#pygodaddy
+git+git://github.com/claneys/pygodaddy#egg=pygodaddy
