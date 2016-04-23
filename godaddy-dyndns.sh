@@ -2,8 +2,7 @@
 
 set -e
 
-ROOT_DIR=$(dirname $0)
-cd $ROOT_DIR
+cd "$(dirname "$0")"
 
 if [[ ! -d venv ]]; then
     echo "venv not initialized!" >& 2
