@@ -4,9 +4,10 @@ import configparser
 import ipaddress
 import logging
 import logging.handlers
+import sys
+
 import pygodaddy
 import requests
-import sys
 
 PREVIOUS_IP_FILE = 'previous-ip.txt'
 
@@ -86,7 +87,7 @@ def main():
 
     client = get_godaddy_client()
 
-    logging.info("Changing all domains to %s" % ip)
+    logging.info("Changing all domains to %s", ip)
 
     for domain in client.find_domains():
         for dns_record in client.find_dns_records(domain):
@@ -95,14 +96,14 @@ def main():
             if ip == dns_record.value:
                 # There's a race here (if there are concurrent writers),
                 # but there's not much we can do with the current API.
-                logging.info("%s unchanged" % full_domain)
+                logging.info("%s unchanged", full_domain)
             else:
                 if not client.update_dns_record(full_domain, ip):
                     raise RuntimeError(
                         'DNS update failed for %s' % full_domain)
 
-                logging.info("%s changed from %s" %
-                             (full_domain, dns_record.value))
+                logging.info("%s changed from %s",
+                             full_domain, dns_record.value)
 
     store_ip_as_previous_public_ip(ip)
 
@@ -111,6 +112,6 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as e:
-        logging.error('Exception: %s' % e)
+        logging.error('Exception: %s', e)
         logging.shutdown()
         sys.exit(1)
