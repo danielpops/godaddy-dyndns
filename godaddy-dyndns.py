@@ -5,11 +5,56 @@ import ipaddress
 import logging
 import logging.handlers
 import sys
+from collections import namedtuple
 
-import pygodaddy
 import requests
 
 PREVIOUS_IP_FILE = 'previous-ip.txt'
+
+GdDomain = namedtuple("GdDomain", ["domain", "status"])
+GdARecord = namedtuple("GdARecord", ["name", "ip"])
+
+
+class GdClient:
+    BASE_URI = 'https://api.godaddy.com/v1'
+
+    def __init__(self, key, secret):
+        self.key = key
+        self.secret = secret
+
+    def _auth_header(self):
+        return {'Authorization': 'sso-key {}:{}'.format(self.key,
+                                                        self.secret)}
+
+    def _get(self, path):
+        r = requests.get(self.BASE_URI + path,
+                         headers=self._auth_header())
+        r.raise_for_status()
+        return r
+
+    def _patch(self, path, data):
+        r = requests.request('PATCH',
+                             self.BASE_URI + path,
+                             json=data,
+                             headers=self._auth_header())
+        r.raise_for_status()
+        return r
+
+    def get_domains(self):
+        return map(lambda d: GdDomain(d['domain'], d['status']),
+                   self._get('/domains').json())
+
+    def get_A_records(self, domain):
+        path = '/domains/{}/records/A'.format(domain)
+        return map(lambda d: GdARecord(d['name'], d['data']),
+                   self._get(path).json())
+
+    def update_A_records(self, domain, records, ip):
+        path = '/domains/{}/records'.format(domain)
+        self._patch(path, list(map(lambda r: {'type': 'A',
+                                              'name': r,
+                                              'data': ip},
+                                   records)))
 
 
 def raise_if_invalid_ip(ip):
@@ -58,13 +103,8 @@ def get_godaddy_client():
     config = configparser.ConfigParser()
     config.read('godaddy-dyndns.conf')
 
-    client = pygodaddy.GoDaddyClient()
-    is_logged_in = client.login(config.get('godaddy', 'username'),
-                                config.get('godaddy', 'password'))
-    if not is_logged_in:
-        raise RuntimeError('Could not log in into GoDaddy')
-
-    return client
+    return GdClient(config.get('godaddy', 'key'),
+                    config.get('godaddy', 'secret'))
 
 
 def init_logging():
@@ -74,6 +114,19 @@ def init_logging():
     l.addHandler(rotater)
     l.setLevel(logging.INFO)
     rotater.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+
+
+def span(predicate, iterable):
+    ts = []
+    fs = []
+
+    for x in iterable:
+        if predicate(x):
+            ts.append(x)
+        else:
+            fs.append(x)
+
+    return ts, fs
 
 
 def main():
@@ -89,21 +142,29 @@ def main():
 
     logging.info("Changing all domains to %s", ip)
 
-    for domain in client.find_domains():
-        for dns_record in client.find_dns_records(domain):
-            full_domain = "%s.%s" % (dns_record.hostname, domain)
+    for d in client.get_domains():
+        logging.info("Checking %s", d.domain)
 
-            if ip == dns_record.value:
-                # There's a race here (if there are concurrent writers),
-                # but there's not much we can do with the current API.
-                logging.info("%s unchanged", full_domain)
-            else:
-                if not client.update_dns_record(full_domain, ip):
-                    raise RuntimeError(
-                        'DNS update failed for %s' % full_domain)
+        if d.status != 'ACTIVE':
+            logging.error('Expected all domains to be ACTIVE, but %s is "%s"',
+                          d.domain, d.status)
+            continue
 
-                logging.info("%s changed from %s",
-                             full_domain, dns_record.value)
+        up_to_date, outdated = span(lambda rip: ip == rip,
+                                    client.get_A_records(d.domain))
+
+        if up_to_date != []:
+            logging.info("Records %s already up to date",
+                         ", ".join(map(lambda r: r.name, up_to_date)))
+
+        if outdated != []:
+            logging.info("Updating records %s",
+                         ", ".join(map(lambda r: ("{} ({})"
+                                                  .format(r.name, r.ip)),
+                                       outdated)))
+            client.update_A_records(d.domain,
+                                    map(lambda r: r.name, outdated),
+                                    ip)
 
     store_ip_as_previous_public_ip(ip)
 
