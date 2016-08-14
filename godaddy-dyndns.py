@@ -112,6 +112,6 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as e:
-        logging.error('Exception: %s', e)
+        logging.exception(e)
         logging.shutdown()
         sys.exit(1)
