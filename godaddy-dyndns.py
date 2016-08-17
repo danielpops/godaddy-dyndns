@@ -51,10 +51,9 @@ class GdClient:
 
     def update_A_records(self, domain, records, ip):
         path = '/domains/{}/records/A'.format(domain)
-        self._put(path, list(map(lambda r: {'type': 'A',
-                                              'name': r,
-                                              'data': ip},
-                                   records)))
+        self._put(path, list(map(lambda r: {'name': r,
+                                            'data': ip},
+                                 records)))
 
 
 def raise_if_invalid_ip(ip):
