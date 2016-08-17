@@ -12,7 +12,6 @@ import requests
 PREVIOUS_IP_FILE = 'previous-ip.txt'
 
 GdDomain = namedtuple("GdDomain", ["domain", "status"])
-GdARecord = namedtuple("GdARecord", ["name", "ip"])
 
 
 class GdClient:
@@ -46,15 +45,11 @@ class GdClient:
 
     def get_A_records(self, domain):
         path = '/domains/{}/records/A'.format(domain)
-        return map(lambda d: GdARecord(d['name'], d['data']),
-                   self._get(path).json())
+        return self._get(path).json()
 
-    def update_A_records(self, domain, records, ip):
+    def replace_A_records(self, domain, records):
         path = '/domains/{}/records/A'.format(domain)
-        self._put(path, list(map(lambda r: {'name': r,
-                                            'data': ip},
-                                 records)))
-
+        self._put(path, records)
 
 def raise_if_invalid_ip(ip):
     ipaddress.ip_address(ip)
@@ -127,6 +122,16 @@ def span(predicate, iterable):
 
     return ts, fs
 
+def all_unique(iterable):
+    seen = set()
+
+    for x in iterable:
+        if x in seen:
+            return False
+        seen.add(x)
+
+    return True
+
 
 def main():
     init_logging()
@@ -149,21 +154,33 @@ def main():
                           d.domain, d.status)
             continue
 
-        up_to_date, outdated = span(lambda rip: ip == rip,
-                                    client.get_A_records(d.domain))
+        records = client.get_A_records(d.domain)
+
+        if not all_unique(map(lambda r: r['name'], records)):
+            logging.error('Aborting: All records must have unique names. Cannot'
+                          ' update without losing information (e.g. TTL). '
+                          'Make sure all records have unique names before '
+                          're-run the script.')
+            continue
+
+        up_to_date, outdated = span(lambda r: ip == r['data'], records)
 
         if up_to_date != []:
             logging.info("Records %s already up to date",
-                         ", ".join(map(lambda r: r.name, up_to_date)))
+                         ", ".join(map(lambda r: r['name'], up_to_date)))
 
         if outdated != []:
             logging.info("Updating records %s",
                          ", ".join(map(lambda r: ("{} ({})"
-                                                  .format(r.name, r.ip)),
+                                                  .format(r['name'],
+                                                          r['data'])),
                                        outdated)))
-            client.update_A_records(d.domain,
-                                    map(lambda r: r.name, outdated),
-                                    ip)
+
+            for r in outdated:
+                r['data'] = ip
+
+            # This replaces all records so we need to include non-outdated also
+            client.replace_A_records(d.domain, records)
 
     store_ip_as_previous_public_ip(ip)
 
