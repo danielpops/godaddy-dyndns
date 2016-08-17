@@ -140,7 +140,7 @@ def main():
 
     # If the IP hasn't changed then there's nothing to do.
     if ip is None:
-        return None
+        return 0
 
     client = get_godaddy_client()
 
@@ -150,9 +150,9 @@ def main():
         logging.info("Checking %s", d.domain)
 
         if d.status != 'ACTIVE':
-            logging.error('Expected all domains to be ACTIVE, but %s is "%s"',
-                          d.domain, d.status)
-            continue
+            logging.error('Aborting: Expected all domains to be ACTIVE, but %s '
+                          'is "%s"', d.domain, d.status)
+            return 1
 
         records = client.get_A_records(d.domain)
 
@@ -161,7 +161,7 @@ def main():
                           ' update without losing information (e.g. TTL). '
                           'Make sure all records have unique names before '
                           're-run the script.')
-            continue
+            return 1
 
         up_to_date, outdated = span(lambda r: ip == r['data'], records)
 
@@ -183,11 +183,12 @@ def main():
             client.replace_A_records(d.domain, records)
 
     store_ip_as_previous_public_ip(ip)
+    return 0
 
 
 if __name__ == '__main__':
     try:
-        main()
+        sys.exit(main())
     except Exception as e:
         logging.exception(e)
         logging.shutdown()
