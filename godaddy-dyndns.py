@@ -32,8 +32,8 @@ class GdClient:
         r.raise_for_status()
         return r
 
-    def _patch(self, path, data):
-        r = requests.request('PATCH',
+    def _put(self, path, data):
+        r = requests.request('PUT',
                              self.BASE_URI + path,
                              json=data,
                              headers=self._auth_header())
@@ -50,8 +50,8 @@ class GdClient:
                    self._get(path).json())
 
     def update_A_records(self, domain, records, ip):
-        path = '/domains/{}/records'.format(domain)
-        self._patch(path, list(map(lambda r: {'type': 'A',
+        path = '/domains/{}/records/A'.format(domain)
+        self._put(path, list(map(lambda r: {'type': 'A',
                                               'name': r,
                                               'data': ip},
                                    records)))
