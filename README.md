@@ -3,9 +3,9 @@ DynDNS-like public IP auto-updater script for GoDaddy.
 
 The script points all your domains and subdomains to the IP of the machine running the script.
 
-The service https://ipify.org is used to figure out the machine's public IP. The script only accesses GoDaddy when the IP has changed since its last successful invocation. It logs all its activities to `godaddy-dyndns.log` (and automatically rotates the log).
+GoDaddy's API is used; previous versions used pygodaddy (before the official API was available).
 
-The official GoDaddy API is used; previous versions used pygodaddy (before the official API was available).
+The service https://ipify.org is used to figure out the machine's public IP. The script only accesses GoDaddy when the IP has changed since its last successful invocation. It logs all its activities to `godaddy-dyndns.log` (and automatically rotates the log).
 
 Based on [Sascha's script with the same name](https://saschpe.wordpress.com/2013/11/12/godaddy-dyndns-for-the-poor/).
 
@@ -29,7 +29,3 @@ And lastly add `godaddy-dyndns.sh` to your crontab file (`crontab -e`), e.g.:
     @reboot sleep 30 && /path/to/script/godaddy-dyndns.sh
 
 The above makes sure that the script runs when your machine boots, and then every hour after that. `sleep` is used to increase the chance that the network has started before the script is run.
-
-## TODO
-
-Maybe one should add some kind of max number of updates per day? In case the script breaks in some way.
