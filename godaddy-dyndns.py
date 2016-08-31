@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import configparser
 import ipaddress
 import logging
@@ -83,8 +84,12 @@ def store_ip_as_previous_public_ip(ip):
         f.write(ip)
 
 
-def get_public_ip_if_changed():
+def get_public_ip_if_changed(debug):
     current_public_ip = get_public_ip()
+
+    if debug:
+        return current_public_ip
+
     previous_public_ip = get_previous_public_ip()
 
     if current_public_ip != previous_public_ip:
@@ -101,13 +106,17 @@ def get_godaddy_client():
                     config.get('godaddy', 'secret'))
 
 
-def init_logging():
+def init_logging(debug):
     l = logging.getLogger()
-    rotater = logging.handlers.RotatingFileHandler(
-        'godaddy-dyndns.log', maxBytes=10000000, backupCount=2)
-    l.addHandler(rotater)
     l.setLevel(logging.INFO)
-    rotater.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+
+    if debug:
+        l.addHandler(logging.StreamHandler())
+    else:
+        rotater = logging.handlers.RotatingFileHandler(
+            'godaddy-dyndns.log', maxBytes=10000000, backupCount=2)
+        l.addHandler(rotater)
+        rotater.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
 
 
 def span(predicate, iterable):
@@ -133,10 +142,10 @@ def all_unique(iterable):
     return True
 
 
-def main():
-    init_logging()
+def main(args):
+    init_logging(args.debug)
 
-    ip = get_public_ip_if_changed()
+    ip = get_public_ip_if_changed(args.debug)
 
     # If the IP hasn't changed then there's nothing to do.
     if ip is None:
@@ -187,8 +196,12 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', action='store_true')
+    args = parser.parse_args()
+
     try:
-        sys.exit(main())
+        sys.exit(main(args))
     except Exception as e:
         logging.exception(e)
         logging.shutdown()
