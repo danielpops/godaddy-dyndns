@@ -1,3 +1,23 @@
 [godaddy]
 key=
 secret=
+
+#
+# If you do not want to update all domains and subdomains you need to
+# specify which you want to update below. If you do not specify
+# anything everything will be updated.
+#
+# Create a section for each domain you want to include. If a
+# subdomains comma-separated list is included only the subdomains
+# listed will be updated, otherwise all subdomains will be updated.
+# Note that the subdomain "@" refers to the domain itself.
+#
+# For example, the following would update all subdomains for
+# example.com and example.org, www.example.org and
+# admin.example.org:
+#
+# [example.com]
+#
+# [example.org]
+# subdomains = @, www, admin
+#

@@ -12,8 +12,6 @@ import requests
 
 PREVIOUS_IP_FILE = 'previous-ip.txt'
 
-GdDomain = namedtuple("GdDomain", ["domain", "status"])
-
 
 class GdClient:
     BASE_URI = 'https://api.godaddy.com/v1'
@@ -41,8 +39,7 @@ class GdClient:
         return r
 
     def get_domains(self):
-        return map(lambda d: GdDomain(d['domain'], d['status']),
-                   self._get('/domains').json())
+        return {d['domain']: None for d in self._get('/domains').json()}
 
     def get_A_records(self, domain):
         path = '/domains/{}/records/A'.format(domain)
@@ -51,6 +48,36 @@ class GdClient:
     def replace_A_records(self, domain, records):
         path = '/domains/{}/records/A'.format(domain)
         self._put(path, records)
+
+    def replace_A_records_by_name(self, domain, record):
+        path = '/domains/{}/records/A/{}'.format(domain, record['name'])
+        self._put(path, [record])
+
+
+class Conf:
+    def __init__(self, filename):
+        parser = configparser.ConfigParser()
+        parser.read('godaddy-dyndns.conf')
+
+        self.key = parser.get('godaddy', 'key')
+        self.secret = parser.get('godaddy', 'secret')
+        self.domains = self.__get_domains(parser)
+
+    def __get_domains(self, parser):
+        ds = {}
+
+        for section in parser.sections():
+            if section == 'godaddy':
+                continue
+
+            ds[section] = parser.get(section, 'subdomains', fallback=None)
+            if ds[section] is not None:
+                ds[section] = set(map(str.strip, ds[section].split(',')))
+
+        if ds == {}:
+            return None
+        else:
+            return ds
 
 
 def raise_if_invalid_ip(ip):
@@ -99,14 +126,6 @@ def get_public_ip_if_changed(debug):
         return None
 
 
-def get_godaddy_client():
-    config = configparser.ConfigParser()
-    config.read('godaddy-dyndns.conf')
-
-    return GdClient(config.get('godaddy', 'key'),
-                    config.get('godaddy', 'secret'))
-
-
 def init_logging(debug):
     l = logging.getLogger()
     l.setLevel(logging.INFO)
@@ -153,45 +172,62 @@ def main(args):
     if ip is None:
         return 0
 
-    client = get_godaddy_client()
+    conf = Conf('godaddy-dyndns.conf')
+    client = GdClient(conf.key, conf.secret)
 
-    logging.info("Changing all domains to %s", ip)
+    logging.info("New IP %s", ip)
 
-    for d in client.get_domains():
-        logging.info("Checking %s", d.domain)
+    domains = client.get_domains() if conf.domains is None else conf.domains
+    for d, sds in domains.items():
+        logging.info("Checking %s", d)
 
-        if d.status != 'ACTIVE':
-            logging.error('Aborting: Expected all domains to be ACTIVE, but %s'
-                          ' is "%s"', d.domain, d.status)
-            return 1
+        records = client.get_A_records(d)
 
-        records = client.get_A_records(d.domain)
+        if sds is None:
+            relevant_records = records
+        else:
+            relevant_records = list(filter(lambda r: r['name'] in sds, records))
+            non_existing = sds - set(map(lambda r: r['name'], relevant_records))
+            if non_existing != set():
+                logging.warning('Subdomains %s do not exist', ', '.join(non_existing))
 
-        if not all_unique(map(lambda r: r['name'], records)):
+        if not all_unique(map(lambda r: r['name'], relevant_records)):
             logging.error('Aborting: All records must have unique names. '
                           'Cannot update without losing information (e.g. TTL)'
                           '. Make sure all records have unique names before '
                           're-run the script.')
             return 1
 
-        up_to_date, outdated = span(lambda r: ip == r['data'], records)
+        up_to_date, outdated = span(lambda r: ip == r['data'], relevant_records)
 
         if up_to_date != []:
             logging.info("Records %s already up to date",
                          ", ".join(map(lambda r: r['name'], up_to_date)))
 
         if outdated != []:
-            logging.info("Updating records %s",
-                         ", ".join(map(lambda r: ("{} ({})"
-                                                  .format(r['name'],
-                                                          r['data'])),
-                                       outdated)))
+            if sds is None:
+                # This replaces all records so we need to include
+                # non-relevant and non-outdated also
+                logging.info("Updating records %s",
+                             ", ".join(map(lambda r: ("{} ({})"
+                                                      .format(r['name'],
+                                                              r['data'])),
+                                           outdated)))
 
-            for r in outdated:
-                r['data'] = ip
+                for r in outdated:
+                    r['data'] = ip
 
-            # This replaces all records so we need to include non-outdated also
-            client.replace_A_records(d.domain, records)
+                client.replace_A_records(d, records)
+            else:
+                # In case we do not update all A records we cannot
+                # assume that we are the only writer for this
+                # domain. So we cannot safely overwrite everything (as
+                # that might overwrite what other writers have
+                # written) in one request.
+                for r in outdated:
+                    logging.info("Updating record %s (%s)", r['name'], r['data'])
+                    r['data'] = ip
+                    client.replace_A_records_by_name(d, r)
 
     store_ip_as_previous_public_ip(ip)
     return 0
