@@ -52,6 +52,7 @@ class GdClient:
         path = '/domains/{}/records/A'.format(domain)
         self._put(path, records)
 
+
 def raise_if_invalid_ip(ip):
     ipaddress.ip_address(ip)
 
@@ -131,6 +132,7 @@ def span(predicate, iterable):
 
     return ts, fs
 
+
 def all_unique(iterable):
     seen = set()
 
@@ -159,16 +161,16 @@ def main(args):
         logging.info("Checking %s", d.domain)
 
         if d.status != 'ACTIVE':
-            logging.error('Aborting: Expected all domains to be ACTIVE, but %s '
-                          'is "%s"', d.domain, d.status)
+            logging.error('Aborting: Expected all domains to be ACTIVE, but %s'
+                          ' is "%s"', d.domain, d.status)
             return 1
 
         records = client.get_A_records(d.domain)
 
         if not all_unique(map(lambda r: r['name'], records)):
-            logging.error('Aborting: All records must have unique names. Cannot'
-                          ' update without losing information (e.g. TTL). '
-                          'Make sure all records have unique names before '
+            logging.error('Aborting: All records must have unique names. '
+                          'Cannot update without losing information (e.g. TTL)'
+                          '. Make sure all records have unique names before '
                           're-run the script.')
             return 1
 
