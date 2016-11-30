@@ -10,4 +10,4 @@ if [[ ! -d venv ]]; then
 fi
 
 source venv/bin/activate
-./godaddy-dyndns.py
+./godaddy-dyndns.py $*
